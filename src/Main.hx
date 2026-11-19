@@ -7,6 +7,8 @@ import haxe.Json;
 import Protocol.Vote;
 import Protocol.Decision;
 import Protocol.Snapshot;
+import Accuracy.AccuracyReport;
+import Accuracy.AccuracyScore;
 
 class Main {
     static var canvas:CanvasElement;
@@ -22,6 +24,12 @@ class Main {
     static var generation=0;
     static var controller:Dynamic;
     static var voteAi=300.0;
+    static var voteFlight=0;
+    static var nextVoteAt=0.0;
+    static var accuracy:AccuracyReport;
+    static var approved:Decision;
+    static var approvedFlight=-1;
+    static var lastApplied=false;
     static var last:Decision;
     static var history:Array<Dynamic>=[];
     static var openedAt=0.0;
@@ -102,7 +110,7 @@ class Main {
         });
         canvas.addEventListener("mousemove",function(e:js.html.MouseEvent) {
             var y=e.clientY+Browser.window.scrollY; var x=e.clientX;
-            hover=(x>side && x<side+sw && y>sy+101 && y<sy+101+rowH*12)?Std.int((y-sy-101)/rowH):-1;
+            hover=(x>side && x<side+sw && y>sy+164 && y<sy+164+rowH*12)?Std.int((y-sy-164)/rowH):-1;
         });
         canvas.addEventListener("click",function(_:Dynamic) { if(hover>=0) selected=selected==hover?-1:hover; });
         Browser.window.addEventListener("keydown",function(e:js.html.KeyboardEvent) {
@@ -117,21 +125,21 @@ class Main {
         Browser.document.addEventListener("visibilitychange",function(_) {
             if(Browser.document.hidden && game.active && !game.paused) togglePause();
         });
-        game.onVote=requestVote;
+        game.onVote=function() { if(!busy && error=="") requestVote(); };
         game.onHit=function() beep(520);
         game.onPoint=function(won:Bool) {
             pointsFlash=0.7; beep(won?760:190);
-            if(won && last!=null) {
-                var nearest=last.votes.copy();
+            if(won && approved!=null && approvedFlight==game.flight) {
+                var nearest=approved.votes.copy();
                 nearest.sort(function(a,b) return Reflect.compare(Math.abs(a.target-game.arrivalY),Math.abs(b.target-game.arrivalY)));
-                scoreComment=Math.abs(last.target-game.arrivalY)<=67?
+                scoreComment=Math.abs(approved.target-game.arrivalY)<=67?
                     "The motion was sound. The paddle could not reach it in time.":
-                    Protocol.name(nearest[0].id)+" was closest to impact at y="+Std.int(game.arrivalY)+". The approved target was "+last.target+".";
-                if(history.length>0) Reflect.setField(history[history.length-1],"miss",{
-                    impactY:game.arrivalY,paddleAtImpact:game.arrivalPaddle,approvedTarget:last.target,
+                    Protocol.name(nearest[0].id)+" was closest to impact at y="+Std.int(game.arrivalY)+". The approved target was "+approved.target+".";
+                for(entry in history) if(entry.decision==approved) Reflect.setField(entry,"miss",{
+                    impactY:game.arrivalY,paddleAtImpact:game.arrivalPaddle,approvedTarget:approved.target,
                     closestSenator:nearest[0].id,report:scoreComment
                 });
-            } else scoreComment="The chamber's return passed. The people failed to receive it.";
+            } else scoreComment=won?"The ball arrived before this shot received a certified motion.":"The chamber's return passed. The people failed to receive it.";
             live.textContent=(won?"You score. ":"The chamber scores. ")+game.human+" to "+game.senate+".";
         };
         reduced=Browser.window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -154,12 +162,12 @@ class Main {
         W=Browser.document.documentElement.clientWidth; mobile=W<980; pad=mobile?16:32; left=pad; top=mobile?130:120;
         if(mobile) {
             H=Math.max(1250,Browser.window.innerHeight); lw=W-pad*2; lh=440;
-            side=left; sy=top+lh+20; sw=lw; sh=530; footerY=sy+sh+20; H=footerY+166;
+            side=left; sy=top+lh+20; sw=lw; sh=596; footerY=sy+sh+20; H=footerY+166;
         } else {
-            H=Math.max(740,Browser.window.innerHeight);
+            H=Math.max(826,Browser.window.innerHeight);
             sw=352; lw=W-pad*2-sw-20; lh=H-230; side=left+lw+20; sy=top; sh=lh; footerY=top+lh+20;
         }
-        bx=left+22; by=top+112; bw=lw-44; bh=lh-212; rowH=(sh-135)/12;
+        bx=left+22; by=top+112; bw=lw-44; bh=lh-212; rowH=(sh-200)/12;
         var ratio=Math.min(2,Browser.window.devicePixelRatio);
         canvas.width=Std.int(W*ratio); canvas.height=Std.int(H*ratio);
         canvas.style.width=W+"px"; canvas.style.height=H+"px"; canvas.style.display="block";
@@ -173,7 +181,7 @@ class Main {
         }
         place(receipt,W-pad-126,footerY+(mobile?105:18),126);
         for(i in 0...senatorButtons.length) {
-            place(senatorButtons[i],side+10,sy+101+i*rowH,sw-20);
+            place(senatorButtons[i],side+10,sy+164+i*rowH,sw-20);
             senatorButtons[i].style.height=rowH+"px";
         }
         positionControls();
@@ -211,9 +219,12 @@ class Main {
     static function start() {
         if(!ready) { error=""; checkHealth(); return; }
         if(error!="" && game.active) {
-            error=""; game.paused=false; game.waiting=true; requestVote(); positionControls(); return;
+            error=""; game.paused=false; nextVoteAt=0;
+            if(game.approaching()) requestVote();
+            positionControls(); return;
         }
         cancelVote(); votes.clear(); failed.clear(); history=[]; last=null; error="";
+        accuracy=null; approved=null; approvedFlight=-1; nextVoteAt=0; lastApplied=false;
         selected=-1; trail=[]; scoreComment=""; receipt.disabled=true; game.reset(); positionControls();
     }
     static function cancelVote() {
@@ -230,7 +241,8 @@ class Main {
         votes.clear(); failed.clear(); selected=-1; error=""; busy=true;
         scoreComment="";
         for(i in 0...12) senatorButtons[i].setAttribute("aria-label",Protocol.names[i]+", "+Protocol.roles[i]+". Ballot pending.");
-        var snapshot=game.snapshot(); voteAi=snapshot.ai;
+        var snapshot=game.snapshot(); voteAi=snapshot.ai; voteFlight=game.flight;
+        accuracy=Accuracy.measure(snapshot,[]);
         openedAt=Browser.window.performance.now(); stage="The floor is open. Twelve opinions incoming.";
         controller=js.Syntax.code("new AbortController()");
         var decoder:Dynamic=js.Syntax.code("new TextDecoder()");
@@ -268,8 +280,7 @@ class Main {
         switch(Std.string(event.type)) {
             case "vote":
                 var v:Vote=event.vote; votes[v.id]=v;
-                var i=Protocol.ids.indexOf(v.id);
-                senatorButtons[i].setAttribute("aria-label",Protocol.names[i]+" votes "+Protocol.direction(v.target,voteAi)+", target "+v.target+", "+v.ms+" milliseconds. "+v.reason);
+                updateAccuracy(snapshot);
             case "failed": failed[event.id]=true;
             case "stage": stage=event.stage;
             case "error":
@@ -277,10 +288,15 @@ class Main {
                 problem("The motion failed. A worker could not submit a valid ballot.");
             case "result":
                 last=event.decision;
-                history.push({sitting:history.length+1,snapshot:snapshot,decision:last});
-                busy=false; stage="Motion certified. The paddle has its orders.";
-                game.approve(last.target); receipt.disabled=false;
-                live.textContent=last.record; positionControls();
+                updateAccuracy(snapshot);
+                lastApplied=game.approve(last.target,voteFlight);
+                if(lastApplied) {approved=last;approvedFlight=voteFlight;}
+                history.push({sitting:history.length+1,flight:voteFlight,snapshot:snapshot,decision:last,
+                    accuracy:accuracy,applied:lastApplied,ballAtDecision:{x:game.x,y:game.y}});
+                busy=false; nextVoteAt=Browser.window.performance.now()+250;
+                stage=lastApplied?"Motion certified. The paddle has its orders.":"Motion arrived too late for its shot. Filed for the record.";
+                receipt.disabled=false;
+                live.textContent=stage+" "+closestNames()+" closest to ideal y "+decimal(accuracy.target)+"."; positionControls();
             default:
         }
     }
@@ -290,7 +306,29 @@ class Main {
     }
     static function announceSenator(index:Int) {
         var v=votes[Protocol.ids[index]];
-        live.textContent=v==null?Protocol.names[index]+" has not submitted a ballot.":Protocol.names[index]+": "+v.reason;
+        live.textContent=v==null?Protocol.names[index]+" has not submitted a ballot.":senatorButtons[index].getAttribute("aria-label");
+    }
+    static function decimal(value:Float):String {
+        var tenths=Math.round(value*10);
+        return Std.int(tenths/10)+"."+(tenths%10);
+    }
+    static function score(id:String):AccuracyScore {
+        if(accuracy!=null) for(s in accuracy.scores) if(s.id==id) return s;
+        return null;
+    }
+    static function closestNames():String {
+        return accuracy==null || accuracy.closest.length==0?"No ballots yet":[for(id in accuracy.closest) Protocol.name(id)].join(", ");
+    }
+    static function updateAccuracy(snapshot:Snapshot) {
+        accuracy=Accuracy.measure(snapshot,[for(v in votes) v]);
+        for(i in 0...12) {
+            var v=votes[Protocol.ids[i]];
+            if(v==null) continue;
+            var s=score(v.id);
+            senatorButtons[i].setAttribute("aria-label",Protocol.names[i]+" votes "+Protocol.direction(v.target,voteAi)+
+                ", target "+v.target+", "+decimal(s.error)+" court units off ideal "+decimal(accuracy.target)+
+                ", rank "+s.rank+(s.rank==1?", closest":"")+", "+v.ms+" milliseconds. "+v.reason);
+        }
     }
     static function frame(now:Float) {
         if(W!=Browser.document.documentElement.clientWidth) resize();
@@ -302,7 +340,8 @@ class Main {
         }
         accumulator+=elapsed;
         while(accumulator>=1/120) { game.step(1/120); accumulator-=1/120; }
-        if(!game.waiting && game.active && !game.paused && !reduced) {
+        if(game.approaching() && !game.paused && !busy && error=="" && now>=nextVoteAt) requestVote();
+        if(game.active && !game.paused && !reduced) {
             trail.push({x:game.x,y:game.y}); if(trail.length>10) trail.shift();
         }
         pointsFlash=Math.max(0,pointsFlash-elapsed);
@@ -396,7 +435,14 @@ class Main {
                 rect(bx+bw-18-(i%3)*5,py,4,2,Protocol.colors[i]);
             }
         }
-        if(last!=null && game.active) {
+        if(accuracy!=null && game.active) {
+            var ideal=by+accuracy.target/600*bh;
+            ctx.strokeStyle=lime;ctx.lineWidth=1.5;ctx.setLineDash([2,4]);
+            ctx.beginPath();ctx.moveTo(bx+bw*0.82,ideal);ctx.lineTo(bx+bw*0.953,ideal);ctx.stroke();ctx.setLineDash([]);
+            ctx.beginPath();ctx.arc(bx+bw*0.953,ideal,4,0,Math.PI*2);ctx.stroke();
+            text("IDEAL",bx+bw*0.82,ideal-7,9,lime,"600",mono);
+        }
+        if(approved!=null && game.active) {
             var target=by+game.aiTarget/600*bh;
             ctx.strokeStyle="#677898";ctx.setLineDash([3,5]);
             ctx.beginPath();ctx.moveTo(bx+bw-64,target);ctx.lineTo(bx+bw-8,target);ctx.stroke();ctx.setLineDash([]);
@@ -427,7 +473,7 @@ class Main {
         text("THE CHAMBER",side+20,sy+29,14,white,"700");
         var tag=busy?"VOTING":ready?"QUORUM 12/12":"ROLL CALL";
         ctx.font="11px "+mono; text(tag,side+sw-20-ctx.measureText(tag).width,sy+28,11,busy?lime:muted,"500",mono);
-        text(busy?"Every senator gets a say.":last!=null?"Decision passed. Dissent preserved.":"A coalition of questionable efficiency.",side+20,sy+51,12,muted);
+        fit(busy?(game.paused?"Play paused. Opinions incoming.":"Ball in motion. Opinions incoming."):last!=null?(lastApplied?"Decision passed. Paddle reacting.":"Motion late. Filed without action."):"A coalition of questionable efficiency.",side+20,sy+51,sw-40,12,muted);
         var counts=[0,0,0]; var dirs=["UP","HOLD","DOWN"];
         for(v in votes) counts[dirs.indexOf(Protocol.direction(v.target,voteAi))]++;
         var segment=(sw-48)/3;
@@ -436,20 +482,32 @@ class Main {
             box(side+20+i*(segment+4),sy+65,segment,26,win?"#293626":"#202732",win?"#617a3b":"");
             center(dirs[i]+"  "+counts[i],side+20+i*(segment+4)+segment/2,sy+83,11,win?lime:muted,"600");
         }
+        box(side+20,sy+100,sw-40,44,"#202920","");
+        var idealLabel=accuracy==null?"IDEAL TARGET · AWAITING A SHOT":"IDEAL y="+decimal(accuracy.target)+" · "+(countVotes()<12?"CLOSEST SO FAR":"CLOSEST");
+        fit(idealLabel,side+30,sy+115,sw-60,9,muted,"600");
+        fit(closestNames(),side+30,sy+134,sw-60,12,lime,"600");
+        text("SENATOR",side+33,sy+158,9,muted,"500",mono);
+        text("VOTE",side+sw-181,sy+158,9,muted,"500",mono);
+        ctx.textAlign="right";
+        ctx.font="9px "+mono;ctx.fillStyle=muted;
+        ctx.fillText("TARGET",side+sw-87,sy+158);ctx.fillText("OFF (u)",side+sw-20,sy+158);ctx.textAlign="left";
         for(i in 0...12) {
-            var id=Protocol.ids[i]; var v=votes[id]; var row=sy+101+i*rowH;
+            var id=Protocol.ids[i]; var v=votes[id]; var row=sy+164+i*rowH;
+            var s=score(id); var closest=s!=null && s.rank==1;
+            if(closest) rect(side+10,row,sw-20,rowH,"#202a22");
             if(i==hover || i==selected) rect(side+10,row,sw-20,rowH,"#242d39");
             if(i>0) rect(side+20,row,sw-40,1,"#252d37");
             rect(side+20,row+rowH/2-6,3,12,Protocol.colors[i]);
-            text(Protocol.names[i],side+33,row+rowH/2+5,14,white,"500");
+            fit(Protocol.names[i],side+33,row+rowH/2+5,sw-221,13,closest?lime:white,"500");
             var stance=v!=null?Protocol.direction(v.target,voteAi):failed.exists(id)?"ERROR":busy?"…":"—";
             var color=v!=null?(stance=="UP"?lime:stance=="DOWN"?blue:muted):failed.exists(id)?"#ff8e90":muted;
-            text(stance,side+sw-165,row+rowH/2+4,11,color,"600",mono);
-            var detail=v!=null?v.target+" y  "+v.ms+"ms":busy?"on the floor":"ready";
-            ctx.font="11px "+mono;
-            text(detail,side+sw-20-ctx.measureText(detail).width,row+rowH/2+4,11,muted,"400",mono);
+            text(stance,side+sw-181,row+rowH/2+4,11,color,"600",mono);
+            ctx.font="11px "+mono;ctx.fillStyle=muted;ctx.textAlign="right";
+            ctx.fillText(v==null?"—":Std.string(v.target),side+sw-87,row+rowH/2+4);
+            ctx.fillStyle=closest?lime:muted;
+            ctx.fillText(s==null?"—":decimal(s.error),side+sw-20,row+rowH/2+4);ctx.textAlign="left";
         }
-        var timing=busy?Std.int((now-openedAt)/100)/10+"s elapsed":last!=null?(last.ms/1000)+"s to move a rectangle":"Native processes. Actual votes.";
+        var timing=busy?decimal((now-openedAt)/1000)+"s deliberating · "+(game.paused?"play paused":"ball keeps moving"):last!=null?(last.ms/1000)+"s · "+(lastApplied?"paddle updated":"too late for this shot"):"Lower error wins. Ties share the credit.";
         fit(timing,side+20,sy+sh-13,sw-40,11,muted);
     }
     static function drawRecord() {
@@ -457,11 +515,13 @@ class Main {
         var show=selected>=0?selected:hover;
         var heading="OFFICIAL RECORD";
         var line=history.length==0?"One human. Twelve senators. Absolutely no executive decisions.":last.record.split("\n")[0];
+        if(last!=null && !lastApplied) {heading="LATE MOTION";line+=" Arrived too late; paddle orders unchanged.";}
         if(scoreComment!="") {heading="POST-POINT INQUIRY";line=scoreComment;}
         if(show>=0) {
             heading=Protocol.names[show].toUpperCase()+" · "+Protocol.roles[show].toUpperCase();
             var v=votes[Protocol.ids[show]];
-            line=v==null?"This senator has not submitted a ballot yet.":v.reason;
+            var s=score(Protocol.ids[show]);
+            line=v==null?"This senator has not submitted a ballot yet.":"#"+s.rank+" · "+decimal(s.error)+" units off · "+v.ms+"ms. "+v.reason;
         } else if(error!="") {heading="RECESS NOTICE";line=error;}
         else if(busy) {heading="SITTING "+(history.length+1)+" · LIVE PROCEEDINGS";line=stage;}
         text(heading,left+20,footerY+25,10,muted,"600",mono);
@@ -512,10 +572,11 @@ class Main {
         dialog.setAttribute("aria-labelledby","help-title");dialog.appendChild(title);
         for(s in [
             "You play the left paddle. Move with your mouse, drag on the court, or use W / S and the arrow keys. First to seven wins.",
-            "Before a shot travels toward the chamber, the ball waits while all twelve native language workers independently propose a target.",
+            "The ball never waits for a vote. All twelve native language workers study the same snapshot while play continues, and reconvene with a fresh snapshot while the shot is still approaching.",
             "Each proposal becomes UP, HOLD or DOWN relative to the paddle. Raku picks the largest voting bloc; confidence breaks ties. The winning bloc's median target becomes the motion.",
-            "Eiffel checks the quorum and court bounds. Icon writes the proceedings. Then play resumes. The paddle follows its orders at a limited speed.",
-            "Hover or tap a senator to read their reasoning. Save receipt downloads the actual snapshots, ballots, timings and decisions. Space pauses; sound is optional."
+            "Eiffel checks the quorum and court bounds. Icon writes the proceedings. The paddle reacts at a limited speed when the decision arrives. Votes for a shot that has already passed are recorded as late and cannot steer another shot.",
+            "Accuracy compares every proposal with the ideal legal paddle center for that snapshot: the ball's predicted height at the chamber, including wall bounces, clamped to the paddle's limits. OFF is the distance in court units, not screen pixels; lower is better. Ties share first place. The green IDEAL marker shows the benchmark, not a paddle instruction.",
+            "Hover or tap a senator for its rank, error, execution time and reasoning. Save receipt includes accuracy rankings and whether each decision arrived in time. Space pauses; sound is optional."
         ]) {var p=Browser.document.createParagraphElement();p.textContent=s;p.style.fontSize="16px";dialog.appendChild(p);}
         var close=Browser.document.createButtonElement();close.textContent="Return to the floor";
         close.style.padding="12px 18px";close.style.backgroundColor=lime;close.style.color=bg;
@@ -526,7 +587,7 @@ class Main {
     }
     static function download() {
         if(history.length==0) return;
-        var blob=new js.html.Blob([Json.stringify({project:"Pongress",version:1,score:{you:game.human,chamber:game.senate},sittings:history},null,"  ")],{type:"application/json"});
+        var blob=new js.html.Blob([Json.stringify({project:"Pongress",version:2,score:{you:game.human,chamber:game.senate},sittings:history},null,"  ")],{type:"application/json"});
         var url=js.html.URL.createObjectURL(blob);var a=Browser.document.createAnchorElement();
         a.href=url;a.download="pongress-proceedings.json";a.click();
         Browser.window.setTimeout(function() js.html.URL.revokeObjectURL(url),1000);

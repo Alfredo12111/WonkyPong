@@ -2,7 +2,7 @@
 
 **One paddle. Twelve languages. A motion to move slightly upward.**
 
-Play Pong against a parliament of twelve real native language workers. Each senator proposes a paddle target, Raku counts the division, Eiffel certifies the motion, and Icon writes the proceedings. The ball waits for democracy. Your paddle does not have to.
+Play Pong against a parliament of twelve real native language workers. Each senator proposes a paddle target, Raku counts the division, Eiffel certifies the motion, and Icon writes the proceedings. The ball keeps moving through all of it. Democracy has a deadline.
 
 The interface, game physics, server and tests are written in **Haxe**. The browser script and Node server are compiler output. There are **no handwritten JavaScript files and no CSS stylesheet**; the court and chamber are drawn by Haxe on canvas. A small HTML document loads the application. PowerShell starts/builds the tools, a shell script calls Mercury, and a tiny Python adapter hosts genuine Tcl.
 
@@ -44,9 +44,10 @@ To use toolchains elsewhere, set `PONGRESS_TOOLCHAINS` to the **.runtimes direct
 - **Keyboard:** W/S or Up/Down; Space or P to pause.
 - **First to seven** wins. New match resets the score and cancels the previous sitting.
 - **Sound** is off initially and can be enabled.
-- **Senators:** hover, tap, or focus a language to read its actual proposal and reasoning.
-- **Save receipt:** download this match's real snapshots, ballots, timing and certified decisions.
-- **Post-point inquiry:** a chamber miss records the actual impact height, the closest senator, and whether the approved target was wrong or the paddle simply arrived too late.
+- **Senators:** hover, tap, or focus a language to read its rank, error, execution time and reasoning.
+- **Accuracy:** the chamber shows the ideal target and each proposal's distance from it in court units. The closest languages are highlighted; ties share credit. A green IDEAL marker shows the benchmark on the court.
+- **Save receipt:** download this match's real snapshots, ballots, timing, accuracy rankings, certified decisions and whether they arrived in time.
+- **Post-point inquiry:** explains whether an approved target missed, the paddle arrived too late, or no decision arrived for that shot. Misses with an approved motion record the actual impact height and closest senator.
 
 Switching away from the page pauses the match. The layout stacks the chamber below the court on narrow screens. Reduced-motion preferences disable the ball trail and score flash. Buttons, senator rows, instructions and match announcements have keyboard/screen-reader support; the moving Pong court is visual.
 
@@ -72,11 +73,15 @@ All twelve languages vote in every completed sitting. They do actual strategy wo
 
 Each proposal is classified as UP, HOLD or DOWN relative to the paddle at the start of the sitting. Targets within 24 units of its center vote HOLD. The largest bloc wins. Ties are broken by total confidence, then by the stable preference HOLD, UP, DOWN. Confidence is a fixed strategic weight, not a measured probability.
 
-The upper median target from the winning bloc becomes the motion. HOLD leaves the paddle at its original position. Eiffel checks that exactly twelve ballots were counted and that the target remains on the court. Icon then publishes the record. Fifteen real worker invocations are involved: twelve votes, a Raku tally, an Eiffel certificate and an Icon report.
+The upper median target from the winning bloc becomes the motion. HOLD selects the paddle position recorded in the snapshot. Eiffel checks that exactly twelve ballots were counted and that the target remains on the court. Icon then publishes the record. Fifteen real worker invocations are involved: twelve votes, a Raku tally, an Eiffel certificate and an Icon report.
 
-The ball pauses before an AI-bound serve and after each human return until this process finishes. Ballots stream into the sidebar as they arrive. A failed worker puts the match into recess with a retry action; there is no fake ballot or JavaScript strategy fallback. Once certified, the paddle moves toward its target at a limited speed. It can still lose.
+Play continues during every sitting. A serve toward the chamber or a human return requests a vote; while the shot is still approaching, another sitting starts from a fresh snapshot 250 ms after the preceding one finishes. Only one sitting is in progress per browser. Ballots stream into the sidebar as they arrive. The paddle keeps following its existing orders until a new certified decision arrives, then moves toward that target at a limited speed.
 
-The three compiled workers are built during setup/build, **not every frame or sitting**. This keeps the voting breaks playable. A representative complete sitting took about one second on the development machine; hardware and cold-start timing vary.
+Every incoming shot has its own identity. A decision that finishes after its shot reaches the paddle, returns toward the player, or is replaced by a new serve is marked **too late** and saved without moving the paddle. Starting a new match cancels the previous sitting. Manual pause still freezes the court; a failed worker puts the match into recess with a retry action. There is no fake ballot or JavaScript strategy fallback.
+
+Accuracy uses the same integer snapshot given to all twelve workers. Haxe computes the ball's exact reflected trajectory from that snapshot to the chamber's contact plane at x=953, then clamps the ideal paddle center to y=60–540. **OFF (u)** is the absolute distance between a proposal and that legal ideal, in the court's 600-unit coordinate system. Rankings use unrounded errors; the interface displays one decimal place. Equal errors share a rank. During voting, the highlight means closest so far; after all twelve ballots arrive it compares the full chamber. This measures aim, independently of response time or whether the paddle can physically reach the target. The reference calculation only grades proposals; it never controls the paddle.
+
+The three compiled workers are built during setup/build, **not every frame or sitting**. A representative complete sitting took about one second on the development machine; hardware and cold-start timing vary. Slow deliberation can now cost the chamber a point even when its aim is accurate.
 
 ## Development
 
@@ -85,7 +90,7 @@ npm run build   # Haxe client/server plus native Mercury, Eiffel and Icon
 npm test        # Haxe gameplay tests and real native integration checks
 ```
 
-Tests cover wall/paddle collisions, bounded paddle speed, waiting/pausing, scoring and restart; malformed snapshots; three-way ties and confidence tie-breaks; incomplete quorums; Eiffel rejection of illegal targets; reflected intercepts from multiple native workers; simultaneous isolated sittings; and cancellation.
+Tests cover wall/paddle collisions, bounded paddle speed, continuous play during voting, manual pause, rejection of late or obsolete decisions, scoring and restart; reflected accuracy benchmarks, fractional targets and tied rankings; malformed snapshots; three-way ties and confidence tie-breaks; incomplete quorums; Eiffel rejection of illegal targets; reflected intercepts from multiple native workers; simultaneous isolated sittings; and cancellation.
 
 Native programs accept only a bounded numeric snapshot. The Haxe host launches fixed commands without a shell, limits request size, permits two concurrent sittings, caps each worker at 15 seconds, cancels owned process trees on disconnect, and removes per-request files. The server listens only on loopback and rejects foreign Host/Origin values.
 

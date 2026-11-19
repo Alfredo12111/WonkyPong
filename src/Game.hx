@@ -7,7 +7,8 @@ class Game {
     public var arrivalY:Float=300; public var arrivalPaddle:Float=300;
     public var human:Int=0; public var senate:Int=0; public var rally:Int=0;
     public var bestRally:Int=0; public var seed:Int=0;
-    public var active:Bool=false; public var waiting:Bool=false;
+    public var active:Bool=false;
+    public var flight:Int=0;
     public var paused:Bool=false; public var finished:Bool=false;
     public var onVote:Void->Void=function() {};
     public var onPoint:Bool->Void=function(_) {};
@@ -19,14 +20,18 @@ class Game {
         active=true; paused=false; finished=false; seed=Std.random(1000000); serve(true);
     }
     public function serve(toSenate:Bool) {
+        flight++;
         x=500; y=300; rally=0;
         vx=toSenate ? 310 : -310;
         vy=(seed%2==0 ? 1 : -1)*(110+seed%90);
         seed=(seed+137)%1000000;
-        waiting=toSenate;
         if(toSenate) onVote();
     }
-    public function approve(target:Int) { aiTarget=target; waiting=false; }
+    public function approaching():Bool return active && !finished && vx>0 && x<953;
+    public function approve(target:Int, forFlight:Int):Bool {
+        if(forFlight!=flight || !approaching()) return false;
+        aiTarget=clamp(target,60,540); return true;
+    }
     public function snapshot():Snapshot return {
         x:Std.int(clamp(x,0,1000)), y:Std.int(clamp(y,7,593)), vx:Std.int(vx), vy:Std.int(vy),
         ai:Std.int(ai), player:Std.int(player), rally:rally, human:human, senate:senate, seed:seed
@@ -37,13 +42,12 @@ class Game {
         player+=clamp(playerTarget-player,-700*dt,700*dt);
         ai+=clamp(aiTarget-ai,-270*dt,270*dt);
         player=clamp(player,60,540); ai=clamp(ai,60,540);
-        if(waiting) return;
         var oldX=x;
         x+=vx*dt; y+=vy*dt;
         if(y<7) { y=14-y; vy=Math.abs(vy); onHit(); }
         if(y>593) { y=1186-y; vy=-Math.abs(vy); onHit(); }
         if(vx<0 && oldX>=47 && x<=47 && Math.abs(y-player)<=67) {
-            x=47; bounce(player,true); waiting=true; onVote();
+            x=47; bounce(player,true); flight++; onVote();
         }
         if(vx>0 && oldX<=953 && x>=953) {
             arrivalY=y; arrivalPaddle=ai;

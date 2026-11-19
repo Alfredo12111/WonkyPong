@@ -9,7 +9,7 @@ class Test {
         return {x:x,y:y,vx:vx,vy:vy,ai:ai,player:300,rally:0,human:0,senate:0,seed:42};
     static function main() {
         try {
-            physics(); validation(); Server.configure(); electionRules(); certificate();
+            physics(); accuracy(); validation(); Server.configure(); electionRules(); certificate();
             var states=[snapshot(),snapshot(100,100,400,-200,500),snapshot(47,100,100,780,120),snapshot(600,320,400,0,320)];
             var chain:Promise<Dynamic>=Promise.resolve(null);
             for(s in states) {
@@ -27,17 +27,18 @@ class Test {
                 return pending.then(function(_):Dynamic { throw "Cancelled sitting returned a result."; },
                     function(_:Dynamic):Dynamic { expect(!resultSeen,"Cancelled sitting emitted a decision."); return null; });
             }).then(function(_) {
-                trace("PASS: "+checks+" checks; six real twelve-language sittings, voting rules, contracts, cancellation and gameplay.");
+                trace("PASS: "+checks+" checks; six real twelve-language sittings, accuracy, real-time decisions, voting rules, contracts and cancellation.");
                 return null;
             }).catchError(function(e:Dynamic) { trace("FAIL: "+Std.string(e));Server.process.exitCode=1;return null;});
         } catch(e:Dynamic) {trace("FAIL: "+Std.string(e));js.Syntax.code("process").exitCode=1;}
     }
     static function physics() {
-        var g=new Game();g.active=true;g.waiting=true;g.playerTarget=999;
+        var g=new Game();g.active=true;g.playerTarget=999;
+        g.step(1/120);
+        expect(g.x>500 && g.y>300,"The ball waited for a vote before moving.");
         for(_ in 0...240) g.step(1/120);
-        expect(g.x==500 && g.y==300,"The ball moved before the chamber voted.");
         expect(g.player==540,"Human paddle escaped the court.");
-        g.waiting=false;g.paused=true;var old=g.x;g.step(0.02);
+        g.paused=true;var old=g.x;g.step(0.02);
         expect(g.x==old,"Pause did not freeze play.");
         g.paused=false;g.y=8;g.vy=-400;g.vx=300;g.step(0.02);
         expect(g.y>=7 && g.vy>0,"Top-wall rebound escaped the court.");
@@ -46,20 +47,56 @@ class Test {
         g.player=300;g.playerTarget=300;g.x=50;g.y=300;g.vx=-520;g.vy=0;
         var votes=0;g.onVote=function() votes++;
         g.step(0.02);
-        expect(g.vx>0 && g.waiting && votes==1,"Human return did not call exactly one sitting.");
-        g.approve(420);g.ai=300;g.aiTarget=420;
+        expect(g.vx>0 && votes==1,"Human return did not call exactly one sitting.");
+        var flight=g.flight;
+        g.step(0.02);
+        expect(g.x>47,"Human return froze while the chamber was deliberating.");
+        expect(g.approve(420,flight),"A timely decision was rejected.");g.ai=300;
         var before=g.ai;g.step(0.02);
         expect(g.ai-before<=5.401,"The chamber paddle teleported.");
         g.x=950;g.y=g.ai;g.vx=520;g.vy=0;g.step(0.02);
         expect(g.vx<0,"Fast shot tunneled through the chamber paddle.");
+        expect(!g.approve(100,flight) && g.aiTarget==420,"A late decision steered a returning shot.");
         g.x=950;g.y=100;g.ai=500;g.aiTarget=500;g.vx=520;g.vy=0;g.step(0.02);
         expect(g.vx>0 && g.arrivalY==100 && g.arrivalPaddle==500,"Miss report lost the actual impact geometry.");
+        expect(!g.approve(100,flight) && g.aiTarget==500,"A decision steered the paddle after a miss crossed its face.");
         g.human=6;g.senate=2;g.x=1011;g.vx=520;g.y=10;
         var points=0;g.onPoint=function(_) points++;
         g.step(0.02);g.step(0.02);
         expect(g.human==7 && g.finished && !g.active && points==1,"Winning point was counted incorrectly.");
         g.reset();
-        expect(g.human==0 && g.senate==0 && !g.finished && g.waiting,"Restart leaked match state.");
+        expect(g.human==0 && g.senate==0 && !g.finished && g.approaching(),"Restart leaked match state.");
+        expect(g.flight!=flight && !g.approve(100,flight) && g.aiTarget==300,"A previous match's decision leaked into the new serve.");
+        var freshFlight=g.flight;g.serve(false);g.serve(true);
+        expect(!g.approve(100,freshFlight),"An old flight's ballot steered a new incoming shot.");
+        g.finished=true;
+        expect(!g.approve(100,g.flight),"A ballot steered a finished match.");
+    }
+    static function accuracy() {
+        // Explicit trajectories exercise reflection, both paddle limits and fractional targets.
+        var states=[snapshot(500,300,453,0),snapshot(500,100,453,100),snapshot(500,580,453,100),
+            snapshot(500,100,453,-200),snapshot(500,300,151,700),snapshot(500,300,151,-700),snapshot(500,100,300,100)];
+        var impacts=[300.0,200,506,114,56,544,251];
+        var targets=[300.0,200,506,114,60,540,251];
+        for(i in 0...states.length) {
+            var report=Accuracy.measure(states[i],[]);
+            expect(Math.abs(report.impact-impacts[i])<0.0000001,"Wrong reflected impact for accuracy case "+i);
+            expect(Math.abs(report.target-targets[i])<0.0000001,"Accuracy benchmark ignored paddle limits.");
+            expect(report.closest.length==0,"Accuracy invented a winner before any ballots.");
+        }
+        var ballots:Array<Protocol.Vote>=[for(i in 0...4) {
+            id:Protocol.ids[i],target:[290,310,320,325][i],confidence:50,reason:"test",ms:1
+        }];
+        var report=Accuracy.measure(snapshot(500,300,453,0),ballots);
+        expect(report.closest.join(",")=="prolog,raku","Equal-distance targets did not share closest credit.");
+        expect(report.scores[0].error==10 && report.scores[1].rank==1 && report.scores[2].rank==3,"Error or tied ranking is incorrect.");
+        ballots[3].target=300;
+        report=Accuracy.measure(snapshot(500,300,453,0),ballots);
+        expect(report.closest.join(",")=="red" && report.scores[0].error==0,"The exact ideal target did not win.");
+        report=Accuracy.measure(snapshot(500,100,400,135),ballots);
+        expect(Math.abs(report.target-252.8875)<0.0000001 && report.scores[0].error>0,"Fractional benchmark was rounded before ranking.");
+        var rejected=false;try Accuracy.measure(snapshot(500,300,-310,135),[]) catch(_:Dynamic) rejected=true;
+        expect(rejected,"A retreating shot received a fictitious future intercept.");
     }
     static function validation() {
         Protocol.validate(snapshot());checks++;
@@ -121,6 +158,8 @@ class Test {
             expect(d.up+d.hold+d.down==12,"Tally lost ballots.");
             expect(d.target>=60 && d.target<=540,"Decision escaped the court.");
             expect(d.record.indexOf(d.direction)>=0,"Icon's record disagrees with the election.");
+            var accuracy=Accuracy.measure(state,d.votes);
+            expect(accuracy.scores.length==12 && accuracy.closest.length>0,"Completed native sitting lost its accuracy ranking.");
             var raw=state.y-7+state.vy*(953-state.x)/state.vx;
             var z=raw-Math.floor(raw/1172)*1172;
             var expected=Game.clamp(7+Math.min(z,1172-z),60,540);
