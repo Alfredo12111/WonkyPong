@@ -1,6 +1,6 @@
 USING: io.encodings.utf8 io.files kernel locals math math.functions
 math.parser sequences splitting strings ;
-IN: pongress
+IN: wonkypong
 :: vote ( -- )
     "state.txt" utf8 file-lines [ string>number ] map :> s
     0 s nth :> x

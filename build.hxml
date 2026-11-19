@@ -1,6 +1,6 @@
 -cp src
 -main Main
--js public/pongress.js
+-js public/wonkypong.js
 -D js-es=6
 -D analyzer-optimize
 --next

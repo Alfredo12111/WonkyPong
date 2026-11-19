@@ -23,7 +23,7 @@ try {
 } finally { Pop-Location }
 $env:MSYSTEM = 'UCRT64'
 $env:CHERE_INVOKING = '1'
-$env:PONGRESS_BUILD_OUTPUT = $destination
+$env:WONKYPONG_BUILD_OUTPUT = $destination
 Push-Location -LiteralPath $project
 try {
     & "$toolchains/msys64/usr/bin/bash.exe" -lc 'bash scripts/compile-mercury.sh'

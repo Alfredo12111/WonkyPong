@@ -25,6 +25,7 @@ class Main {
     static var controller:Dynamic;
     static var voteAi=300.0;
     static var voteFlight=0;
+    static var voteSpeed=1;
     static var nextVoteAt=0.0;
     static var accuracy:AccuracyReport;
     static var approved:Decision;
@@ -44,6 +45,7 @@ class Main {
     static var mobile=false;
     static var primary:ButtonElement; static var pause:ButtonElement;
     static var sound:ButtonElement; static var help:ButtonElement; static var receipt:ButtonElement;
+    static var normalSpeed:ButtonElement; static var doubleSpeed:ButtonElement;
     static var live:DivElement; static var pointer:DivElement;
     static var senatorButtons:Array<ButtonElement>=[];
     static var audio:Dynamic; static var soundOn=false;
@@ -70,7 +72,7 @@ class Main {
         body.style.fontFamily=sans;
         canvas=Browser.document.createCanvasElement();
         canvas.setAttribute("role","img");
-        canvas.setAttribute("aria-label","Pongress. A Pong court with your paddle on the left and twelve programming-language senators controlling the right paddle.");
+        canvas.setAttribute("aria-label","WonkyPong. A Pong court with your paddle on the left and twelve programming-language senators controlling the right paddle.");
         body.appendChild(canvas); ctx=canvas.getContext2d();
         live=Browser.document.createDivElement();
         live.setAttribute("aria-live","polite"); live.setAttribute("role","status");
@@ -85,6 +87,13 @@ class Main {
             if(soundOn) beep(420);
         });
         help=button("How it works",showHelp);
+        normalSpeed=button("Normal",function() setSpeed(1));
+        doubleSpeed=button("2×",function() setSpeed(2));
+        normalSpeed.setAttribute("aria-label","Normal speed (1×)");
+        doubleSpeed.setAttribute("aria-label","Double speed (2×)");
+        normalSpeed.title="Normal game speed";
+        doubleSpeed.title="Double ball and paddle speed. The languages still need real time to vote.";
+        syncSpeedControls();
         receipt=button("Save receipt",download);
         receipt.disabled=true;
         for(i in 0...12) {
@@ -158,8 +167,20 @@ class Main {
     static function place(b:ButtonElement,x:Float,y:Float,width:Float) {
         b.style.left=x+"px"; b.style.top=y+"px"; b.style.width=width+"px";
     }
+    static function setSpeed(multiplier:Int) {
+        game.setSpeed(multiplier); syncSpeedControls();
+        live.textContent=multiplier==1?"Normal speed selected.":"Double speed selected. Voting still runs in real time.";
+    }
+    static function syncSpeedControls() {
+        for(i in 0...2) {
+            var b=i==0?normalSpeed:doubleSpeed; var active=game.speedMultiplier==i+1;
+            b.setAttribute("aria-pressed",Std.string(active));
+            b.style.backgroundColor=active?lime:panel; b.style.color=active?bg:white;
+            b.style.borderColor=active?lime:edge;
+        }
+    }
     static function resize() {
-        W=Browser.document.documentElement.clientWidth; mobile=W<980; pad=mobile?16:32; left=pad; top=mobile?130:120;
+        W=Browser.document.documentElement.clientWidth; mobile=W<980; pad=mobile?16:32; left=pad; top=mobile?196:120;
         if(mobile) {
             H=Math.max(1250,Browser.window.innerHeight); lw=W-pad*2; lh=440;
             side=left; sy=top+lh+20; sw=lw; sh=596; footerY=sy+sh+20; H=footerY+166;
@@ -176,8 +197,11 @@ class Main {
         pointer.style.width=bw+"px"; pointer.style.height=bh+"px";
         if(mobile) {
             place(help,pad,76,132); place(sound,pad+142,76,114);
+            var speedWidth=(W-pad*2-10)/2;
+            place(normalSpeed,pad,126,speedWidth); place(doubleSpeed,pad+speedWidth+10,126,speedWidth);
         } else {
             place(help,W-pad-260,28,138); place(sound,W-pad-112,28,112);
+            place(normalSpeed,W-pad-412,28,82); place(doubleSpeed,W-pad-324,28,54);
         }
         place(receipt,W-pad-126,footerY+(mobile?105:18),126);
         for(i in 0...senatorButtons.length) {
@@ -212,7 +236,7 @@ class Main {
             if(!ready) error="Run npm run setup to seat every language.";
             live.textContent=healthMessage; positionControls(); return null;
         }).catchError(function(_:Dynamic) {
-            ready=false; error="The local chamber is offline. Start Pongress, then retry.";
+            ready=false; error="The local chamber is offline. Start WonkyPong, then retry.";
             healthMessage="Chamber offline"; positionControls(); return null;
         });
     }
@@ -241,7 +265,7 @@ class Main {
         votes.clear(); failed.clear(); selected=-1; error=""; busy=true;
         scoreComment="";
         for(i in 0...12) senatorButtons[i].setAttribute("aria-label",Protocol.names[i]+", "+Protocol.roles[i]+". Ballot pending.");
-        var snapshot=game.snapshot(); voteAi=snapshot.ai; voteFlight=game.flight;
+        var snapshot=game.snapshot(); voteAi=snapshot.ai; voteFlight=game.flight; voteSpeed=game.speedMultiplier;
         accuracy=Accuracy.measure(snapshot,[]);
         openedAt=Browser.window.performance.now(); stage="The floor is open. Twelve opinions incoming.";
         controller=js.Syntax.code("new AbortController()");
@@ -292,7 +316,8 @@ class Main {
                 lastApplied=game.approve(last.target,voteFlight);
                 if(lastApplied) {approved=last;approvedFlight=voteFlight;}
                 history.push({sitting:history.length+1,flight:voteFlight,snapshot:snapshot,decision:last,
-                    accuracy:accuracy,applied:lastApplied,ballAtDecision:{x:game.x,y:game.y}});
+                    accuracy:accuracy,applied:lastApplied,speedAtSnapshot:voteSpeed,speedAtDecision:game.speedMultiplier,
+                    ballAtDecision:{x:game.x,y:game.y}});
                 busy=false; nextVoteAt=Browser.window.performance.now()+250;
                 stage=lastApplied?"Motion certified. The paddle has its orders.":"Motion arrived too late for its shot. Filed for the record.";
                 receipt.disabled=false;
@@ -334,8 +359,8 @@ class Main {
         if(W!=Browser.document.documentElement.clientWidth) resize();
         var elapsed=prev==0?0:Math.min(0.05,(now-prev)/1000); prev=now;
         if(game.active && !game.paused && !game.finished) {
-            if(keys.exists("ArrowUp")||keys.exists("w")||keys.exists("W")) game.playerTarget-=680*elapsed;
-            if(keys.exists("ArrowDown")||keys.exists("s")||keys.exists("S")) game.playerTarget+=680*elapsed;
+            if(keys.exists("ArrowUp")||keys.exists("w")||keys.exists("W")) game.playerTarget-=680*elapsed*game.speedMultiplier;
+            if(keys.exists("ArrowDown")||keys.exists("s")||keys.exists("S")) game.playerTarget+=680*elapsed*game.speedMultiplier;
             game.playerTarget=Game.clamp(game.playerTarget,60,540);
         }
         accumulator+=elapsed;
@@ -381,13 +406,13 @@ class Main {
         rect(0,0,W,H,bg);
         // The mark is a miniature chamber: two paddles and a voting ball.
         box(pad,28,36,36,lime,""); rect(pad+9,37,3,18,bg);rect(pad+24,37,3,18,bg);dot(pad+18,46,2.5,bg);
-        text("pongress",pad+48,54,32,white,"800");
+        text("WonkyPong",pad+48,54,32,white,"800");
         if(!mobile) {
-            rect(pad+218,33,1,28,edge);
-            text("A MOTION TO MOVE",pad+234,44,11,muted,"600",mono);
-            text("SLIGHTLY UPWARD.",pad+234,61,11,muted,"600",mono);
+            rect(pad+264,33,1,28,edge);
+            text("A MOTION TO MOVE",pad+280,44,11,muted,"600",mono);
+            text("SLIGHTLY UPWARD.",pad+280,61,11,muted,"600",mono);
         }
-        rect(pad,90,W-pad*2,1,edge);
+        rect(pad,mobile?176:90,W-pad*2,1,edge);
         if(!mobile) {
             text("THE PEOPLE vs. THE PROCESS",left,108,11,muted,"600",mono);
             text("TWELVE LANGUAGES. ONE PADDLE.",side,108,11,muted,"600",mono);
@@ -572,6 +597,7 @@ class Main {
         dialog.setAttribute("aria-labelledby","help-title");dialog.appendChild(title);
         for(s in [
             "You play the left paddle. Move with your mouse, drag on the court, or use W / S and the arrow keys. First to seven wins.",
+            "Choose Normal or 2× at any time. Double speed makes the ball and both paddles move twice as fast, including keyboard movement. Native voting still takes real time, so the chamber has half as long to react. Your speed choice carries into the next match.",
             "The ball never waits for a vote. All twelve native language workers study the same snapshot while play continues, and reconvene with a fresh snapshot while the shot is still approaching.",
             "Each proposal becomes UP, HOLD or DOWN relative to the paddle. Raku picks the largest voting bloc; confidence breaks ties. The winning bloc's median target becomes the motion.",
             "Eiffel checks the quorum and court bounds. Icon writes the proceedings. The paddle reacts at a limited speed when the decision arrives. Votes for a shot that has already passed are recorded as late and cannot steer another shot.",
@@ -587,9 +613,9 @@ class Main {
     }
     static function download() {
         if(history.length==0) return;
-        var blob=new js.html.Blob([Json.stringify({project:"Pongress",version:2,score:{you:game.human,chamber:game.senate},sittings:history},null,"  ")],{type:"application/json"});
+        var blob=new js.html.Blob([Json.stringify({project:"WonkyPong",version:3,speedMultiplier:game.speedMultiplier,score:{you:game.human,chamber:game.senate},sittings:history},null,"  ")],{type:"application/json"});
         var url=js.html.URL.createObjectURL(blob);var a=Browser.document.createAnchorElement();
-        a.href=url;a.download="pongress-proceedings.json";a.click();
+        a.href=url;a.download="wonkypong-proceedings.json";a.click();
         Browser.window.setTimeout(function() js.html.URL.revokeObjectURL(url),1000);
     }
 }

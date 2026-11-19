@@ -9,7 +9,7 @@ class Test {
         return {x:x,y:y,vx:vx,vy:vy,ai:ai,player:300,rally:0,human:0,senate:0,seed:42};
     static function main() {
         try {
-            physics(); accuracy(); validation(); Server.configure(); electionRules(); certificate();
+            physics(); speed(); accuracy(); validation(); Server.configure(); electionRules(); certificate();
             var states=[snapshot(),snapshot(100,100,400,-200,500),snapshot(47,100,100,780,120),snapshot(600,320,400,0,320)];
             var chain:Promise<Dynamic>=Promise.resolve(null);
             for(s in states) {
@@ -27,7 +27,7 @@ class Test {
                 return pending.then(function(_):Dynamic { throw "Cancelled sitting returned a result."; },
                     function(_:Dynamic):Dynamic { expect(!resultSeen,"Cancelled sitting emitted a decision."); return null; });
             }).then(function(_) {
-                trace("PASS: "+checks+" checks; six real twelve-language sittings, accuracy, real-time decisions, voting rules, contracts and cancellation.");
+                trace("PASS: "+checks+" checks; six real twelve-language sittings, 1x/2x speed, accuracy, real-time decisions, voting rules, contracts and cancellation.");
                 return null;
             }).catchError(function(e:Dynamic) { trace("FAIL: "+Std.string(e));Server.process.exitCode=1;return null;});
         } catch(e:Dynamic) {trace("FAIL: "+Std.string(e));js.Syntax.code("process").exitCode=1;}
@@ -71,6 +71,29 @@ class Test {
         expect(!g.approve(100,freshFlight),"An old flight's ballot steered a new incoming shot.");
         g.finished=true;
         expect(!g.approve(100,g.flight),"A ballot steered a finished match.");
+    }
+    static function speed() {
+        var normal=new Game(); var fast=new Game();
+        normal.active=true; fast.active=true; fast.setSpeed(2);
+        normal.playerTarget=400; fast.playerTarget=400; normal.aiTarget=400; fast.aiTarget=400;
+        normal.step(1/120); fast.step(1/120);
+        expect(Math.abs((fast.x-500)-2*(normal.x-500))<0.0000001,"2x did not double horizontal ball travel.");
+        expect(Math.abs((fast.y-300)-2*(normal.y-300))<0.0000001,"2x did not double vertical ball travel.");
+        expect(Math.abs((fast.player-300)-2*(normal.player-300))<0.0000001,"2x did not double the human paddle speed.");
+        expect(Math.abs((fast.ai-300)-2*(normal.ai-300))<0.0000001,"2x did not double the chamber paddle speed.");
+        expect(fast.vx==normal.vx && fast.vy==normal.vy,"Speed altered the snapshot's game-time trajectory.");
+        fast.setSpeed(1); var old=fast.x;fast.step(1/120);
+        expect(Math.abs((fast.x-old)-normal.vx/120)<0.0000001,"Returning to normal left a compounded speed multiplier.");
+        fast.setSpeed(2);fast.paused=true;old=fast.x;fast.step(1/120);
+        expect(fast.x==old,"Double speed bypassed pause.");
+        fast.reset();expect(fast.speedMultiplier==2,"New match lost the selected speed.");
+        fast.x=952;fast.y=300;fast.ai=300;fast.aiTarget=300;fast.vy=0;fast.step(1/120);
+        expect(fast.vx<0 && fast.rally==1,"2x tunneled through or double-counted a paddle hit.");
+        fast.human=6;fast.x=1011;fast.vx=520;fast.y=100;var points=0;fast.onPoint=function(_) points++;
+        fast.step(1/120);
+        expect(fast.human==7 && fast.finished && points==1,"2x counted a winning point twice.");
+        var rejected=false;try fast.setSpeed(3) catch(_:Dynamic) rejected=true;
+        expect(rejected && fast.speedMultiplier==2,"Unsupported speed changed the game.");
     }
     static function accuracy() {
         // Explicit trajectories exercise reflection, both paddle limits and fractional targets.

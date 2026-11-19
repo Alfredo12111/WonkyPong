@@ -53,6 +53,7 @@ class Game {
 		};
 		this.finished = false;
 		this.paused = false;
+		this.speedMultiplier = 1;
 		this.flight = 0;
 		this.active = false;
 		this.seed = 0;
@@ -70,6 +71,12 @@ class Game {
 		this.vx = 310;
 		this.y = 300;
 		this.x = 500;
+	}
+	setSpeed(multiplier) {
+		if(multiplier != 1 && multiplier != 2) {
+			throw haxe_Exception.thrown("Choose normal or 2x speed.");
+		}
+		this.speedMultiplier = multiplier;
 	}
 	reset() {
 		this.human = 0;
@@ -116,10 +123,18 @@ class Game {
 		return { x : Math.max(0,Math.min(1000,this.x)) | 0, y : Math.max(7,Math.min(593,this.y)) | 0, vx : this.vx | 0, vy : this.vy | 0, ai : this.ai | 0, player : this.player | 0, rally : this.rally, human : this.human, senate : this.senate, seed : this.seed};
 	}
 	step(dt) {
+		dt = Math.max(0,Math.min(0.025,dt));
+		let _g = 0;
+		let _g1 = this.speedMultiplier;
+		while(_g < _g1) {
+			++_g;
+			this.advance(dt);
+		}
+	}
+	advance(dt) {
 		if(!this.active || this.paused || this.finished) {
 			return;
 		}
-		dt = Math.max(0,Math.min(0.025,dt));
 		this.player += Math.max(-700 * dt,Math.min(700 * dt,this.playerTarget - this.player));
 		this.ai += Math.max(-270 * dt,Math.min(270 * dt,this.aiTarget - this.ai));
 		this.player = Math.max(60,Math.min(540,this.player));
@@ -219,7 +234,7 @@ class Main {
 		body.style.fontFamily = Main.sans;
 		Main.canvas = window.document.createElement("canvas");
 		Main.canvas.setAttribute("role","img");
-		Main.canvas.setAttribute("aria-label","Pongress. A Pong court with your paddle on the left and twelve programming-language senators controlling the right paddle.");
+		Main.canvas.setAttribute("aria-label","WonkyPong. A Pong court with your paddle on the left and twelve programming-language senators controlling the right paddle.");
 		body.appendChild(Main.canvas);
 		Main.ctx = Main.canvas.getContext("2d",null);
 		Main.live = window.document.createElement("div");
@@ -242,6 +257,17 @@ class Main {
 			}
 		});
 		Main.help = Main.button("How it works",Main.showHelp);
+		Main.normalSpeed = Main.button("Normal",function() {
+			Main.setSpeed(1);
+		});
+		Main.doubleSpeed = Main.button("2×",function() {
+			Main.setSpeed(2);
+		});
+		Main.normalSpeed.setAttribute("aria-label","Normal speed (1×)");
+		Main.doubleSpeed.setAttribute("aria-label","Double speed (2×)");
+		Main.normalSpeed.title = "Normal game speed";
+		Main.doubleSpeed.title = "Double ball and paddle speed. The languages still need real time to vote.";
+		Main.syncSpeedControls();
 		Main.receipt = Main.button("Save receipt",Main.download);
 		Main.receipt.disabled = true;
 		let _g = 0;
@@ -395,12 +421,31 @@ class Main {
 		b.style.top = y + "px";
 		b.style.width = width + "px";
 	}
+	static setSpeed(multiplier) {
+		Main.game.setSpeed(multiplier);
+		Main.syncSpeedControls();
+		Main.live.textContent = multiplier == 1 ? "Normal speed selected." : "Double speed selected. Voting still runs in real time.";
+	}
+	static syncSpeedControls() {
+		let b = Main.normalSpeed;
+		let active = Main.game.speedMultiplier == 1;
+		b.setAttribute("aria-pressed",active == null ? "null" : "" + active);
+		b.style.backgroundColor = active ? Main.lime : Main.panel;
+		b.style.color = active ? Main.bg : Main.white;
+		b.style.borderColor = active ? Main.lime : Main.edge;
+		let b1 = Main.doubleSpeed;
+		let active1 = Main.game.speedMultiplier == 2;
+		b1.setAttribute("aria-pressed",active1 == null ? "null" : "" + active1);
+		b1.style.backgroundColor = active1 ? Main.lime : Main.panel;
+		b1.style.color = active1 ? Main.bg : Main.white;
+		b1.style.borderColor = active1 ? Main.lime : Main.edge;
+	}
 	static resize() {
 		Main.W = window.document.documentElement.clientWidth;
 		Main.mobile = Main.W < 980;
 		Main.pad = Main.mobile ? 16 : 32;
 		Main.left = Main.pad;
-		Main.top = Main.mobile ? 130 : 120;
+		Main.top = Main.mobile ? 196 : 120;
 		if(Main.mobile) {
 			Main.H = Math.max(1250,window.innerHeight);
 			Main.lw = Main.W - Main.pad * 2;
@@ -440,9 +485,14 @@ class Main {
 		if(Main.mobile) {
 			Main.place(Main.help,Main.pad,76,132);
 			Main.place(Main.sound,Main.pad + 142,76,114);
+			let speedWidth = (Main.W - Main.pad * 2 - 10) / 2;
+			Main.place(Main.normalSpeed,Main.pad,126,speedWidth);
+			Main.place(Main.doubleSpeed,Main.pad + speedWidth + 10,126,speedWidth);
 		} else {
 			Main.place(Main.help,Main.W - Main.pad - 260,28,138);
 			Main.place(Main.sound,Main.W - Main.pad - 112,28,112);
+			Main.place(Main.normalSpeed,Main.W - Main.pad - 412,28,82);
+			Main.place(Main.doubleSpeed,Main.W - Main.pad - 324,28,54);
 		}
 		Main.place(Main.receipt,Main.W - Main.pad - 126,Main.footerY + (Main.mobile ? 105 : 18),126);
 		let _g = 0;
@@ -497,7 +547,7 @@ class Main {
 			return null;
 		}).catch(function(_) {
 			Main.ready = false;
-			Main.error = "The local chamber is offline. Start Pongress, then retry.";
+			Main.error = "The local chamber is offline. Start WonkyPong, then retry.";
 			Main.healthMessage = "Chamber offline";
 			Main.positionControls();
 			return null;
@@ -578,6 +628,7 @@ class Main {
 		let snapshot = Main.game.snapshot();
 		Main.voteAi = snapshot.ai;
 		Main.voteFlight = Main.game.flight;
+		Main.voteSpeed = Main.game.speedMultiplier;
 		Main.accuracy = Accuracy.measure(snapshot,[]);
 		Main.openedAt = window.performance.now();
 		Main.stage = "The floor is open. Twelve opinions incoming.";
@@ -639,7 +690,7 @@ class Main {
 				Main.approved = Main.last;
 				Main.approvedFlight = Main.voteFlight;
 			}
-			Main.history.push({ sitting : Main.history.length + 1, flight : Main.voteFlight, snapshot : snapshot, decision : Main.last, accuracy : Main.accuracy, applied : Main.lastApplied, ballAtDecision : { x : Main.game.x, y : Main.game.y}});
+			Main.history.push({ sitting : Main.history.length + 1, flight : Main.voteFlight, snapshot : snapshot, decision : Main.last, accuracy : Main.accuracy, applied : Main.lastApplied, speedAtSnapshot : Main.voteSpeed, speedAtDecision : Main.game.speedMultiplier, ballAtDecision : { x : Main.game.x, y : Main.game.y}});
 			Main.busy = false;
 			Main.nextVoteAt = window.performance.now() + 250;
 			Main.stage = Main.lastApplied ? "Motion certified. The paddle has its orders." : "Motion arrived too late for its shot. Filed for the record.";
@@ -726,10 +777,10 @@ class Main {
 		Main.prev = now;
 		if(Main.game.active && !Main.game.paused && !Main.game.finished) {
 			if(Object.prototype.hasOwnProperty.call(Main.keys.h,"ArrowUp") || Object.prototype.hasOwnProperty.call(Main.keys.h,"w") || Object.prototype.hasOwnProperty.call(Main.keys.h,"W")) {
-				Main.game.playerTarget -= 680 * elapsed;
+				Main.game.playerTarget -= 680 * elapsed * Main.game.speedMultiplier;
 			}
 			if(Object.prototype.hasOwnProperty.call(Main.keys.h,"ArrowDown") || Object.prototype.hasOwnProperty.call(Main.keys.h,"s") || Object.prototype.hasOwnProperty.call(Main.keys.h,"S")) {
-				Main.game.playerTarget += 680 * elapsed;
+				Main.game.playerTarget += 680 * elapsed * Main.game.speedMultiplier;
 			}
 			Main.game.playerTarget = Math.max(60,Math.min(540,Main.game.playerTarget));
 		}
@@ -824,13 +875,13 @@ class Main {
 		Main.rect(Main.pad + 9,37,3,18,Main.bg);
 		Main.rect(Main.pad + 24,37,3,18,Main.bg);
 		Main.dot(Main.pad + 18,46,2.5,Main.bg);
-		Main.text("pongress",Main.pad + 48,54,32,Main.white,"800");
+		Main.text("WonkyPong",Main.pad + 48,54,32,Main.white,"800");
 		if(!Main.mobile) {
-			Main.rect(Main.pad + 218,33,1,28,Main.edge);
-			Main.text("A MOTION TO MOVE",Main.pad + 234,44,11,Main.muted,"600",Main.mono);
-			Main.text("SLIGHTLY UPWARD.",Main.pad + 234,61,11,Main.muted,"600",Main.mono);
+			Main.rect(Main.pad + 264,33,1,28,Main.edge);
+			Main.text("A MOTION TO MOVE",Main.pad + 280,44,11,Main.muted,"600",Main.mono);
+			Main.text("SLIGHTLY UPWARD.",Main.pad + 280,61,11,Main.muted,"600",Main.mono);
 		}
-		Main.rect(Main.pad,90,Main.W - Main.pad * 2,1,Main.edge);
+		Main.rect(Main.pad,Main.mobile ? 176 : 90,Main.W - Main.pad * 2,1,Main.edge);
 		if(!Main.mobile) {
 			Main.text("THE PEOPLE vs. THE PROCESS",Main.left,108,11,Main.muted,"600",Main.mono);
 			Main.text("TWELVE LANGUAGES. ONE PADDLE.",Main.side,108,11,Main.muted,"600",Main.mono);
@@ -1155,25 +1206,29 @@ class Main {
 		p.style.fontSize = "16px";
 		dialog.appendChild(p);
 		let p1 = window.document.createElement("p");
-		p1.textContent = "The ball never waits for a vote. All twelve native language workers study the same snapshot while play continues, and reconvene with a fresh snapshot while the shot is still approaching.";
+		p1.textContent = "Choose Normal or 2× at any time. Double speed makes the ball and both paddles move twice as fast, including keyboard movement. Native voting still takes real time, so the chamber has half as long to react. Your speed choice carries into the next match.";
 		p1.style.fontSize = "16px";
 		dialog.appendChild(p1);
 		let p2 = window.document.createElement("p");
-		p2.textContent = "Each proposal becomes UP, HOLD or DOWN relative to the paddle. Raku picks the largest voting bloc; confidence breaks ties. The winning bloc's median target becomes the motion.";
+		p2.textContent = "The ball never waits for a vote. All twelve native language workers study the same snapshot while play continues, and reconvene with a fresh snapshot while the shot is still approaching.";
 		p2.style.fontSize = "16px";
 		dialog.appendChild(p2);
 		let p3 = window.document.createElement("p");
-		p3.textContent = "Eiffel checks the quorum and court bounds. Icon writes the proceedings. The paddle reacts at a limited speed when the decision arrives. Votes for a shot that has already passed are recorded as late and cannot steer another shot.";
+		p3.textContent = "Each proposal becomes UP, HOLD or DOWN relative to the paddle. Raku picks the largest voting bloc; confidence breaks ties. The winning bloc's median target becomes the motion.";
 		p3.style.fontSize = "16px";
 		dialog.appendChild(p3);
 		let p4 = window.document.createElement("p");
-		p4.textContent = "Accuracy compares every proposal with the ideal legal paddle center for that snapshot: the ball's predicted height at the chamber, including wall bounces, clamped to the paddle's limits. OFF is the distance in court units, not screen pixels; lower is better. Ties share first place. The green IDEAL marker shows the benchmark, not a paddle instruction.";
+		p4.textContent = "Eiffel checks the quorum and court bounds. Icon writes the proceedings. The paddle reacts at a limited speed when the decision arrives. Votes for a shot that has already passed are recorded as late and cannot steer another shot.";
 		p4.style.fontSize = "16px";
 		dialog.appendChild(p4);
 		let p5 = window.document.createElement("p");
-		p5.textContent = "Hover or tap a senator for its rank, error, execution time and reasoning. Save receipt includes accuracy rankings and whether each decision arrived in time. Space pauses; sound is optional.";
+		p5.textContent = "Accuracy compares every proposal with the ideal legal paddle center for that snapshot: the ball's predicted height at the chamber, including wall bounces, clamped to the paddle's limits. OFF is the distance in court units, not screen pixels; lower is better. Ties share first place. The green IDEAL marker shows the benchmark, not a paddle instruction.";
 		p5.style.fontSize = "16px";
 		dialog.appendChild(p5);
+		let p6 = window.document.createElement("p");
+		p6.textContent = "Hover or tap a senator for its rank, error, execution time and reasoning. Save receipt includes accuracy rankings and whether each decision arrived in time. Space pauses; sound is optional.";
+		p6.style.fontSize = "16px";
+		dialog.appendChild(p6);
 		let close = window.document.createElement("button");
 		close.textContent = "Return to the floor";
 		close.style.padding = "12px 18px";
@@ -1197,10 +1252,10 @@ class Main {
 		if(Main.history.length == 0) {
 			return;
 		}
-		let url = URL.createObjectURL(new Blob([JSON.stringify({ project : "Pongress", version : 2, score : { you : Main.game.human, chamber : Main.game.senate}, sittings : Main.history},null,"  ")],{ type : "application/json"}));
+		let url = URL.createObjectURL(new Blob([JSON.stringify({ project : "WonkyPong", version : 3, speedMultiplier : Main.game.speedMultiplier, score : { you : Main.game.human, chamber : Main.game.senate}, sittings : Main.history},null,"  ")],{ type : "application/json"}));
 		let a = window.document.createElement("a");
 		a.href = url;
-		a.download = "pongress-proceedings.json";
+		a.download = "wonkypong-proceedings.json";
 		a.click();
 		window.setTimeout(function() {
 			URL.revokeObjectURL(url);
@@ -1446,6 +1501,7 @@ Main.busy = false;
 Main.generation = 0;
 Main.voteAi = 300.0;
 Main.voteFlight = 0;
+Main.voteSpeed = 1;
 Main.nextVoteAt = 0.0;
 Main.approvedFlight = -1;
 Main.lastApplied = false;

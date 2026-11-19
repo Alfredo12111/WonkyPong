@@ -13,4 +13,4 @@
 *.m text eol=lf linguist-language=Mercury
 *.e text eol=lf linguist-language=Eiffel
 *.icn text eol=lf
-public/pongress.js linguist-generated=true
+public/wonkypong.js linguist-generated=true

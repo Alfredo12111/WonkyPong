@@ -1,4 +1,4 @@
-# Pongress
+# WonkyPong
 
 **One paddle. Twelve languages. A motion to move slightly upward.**
 
@@ -6,11 +6,18 @@ Play Pong against a parliament of twelve real native language workers. Each sena
 
 The interface, game physics, server and tests are written in **Haxe**. The browser script and Node server are compiler output. There are **no handwritten JavaScript files and no CSS stylesheet**; the court and chamber are drawn by Haxe on canvas. A small HTML document loads the application. PowerShell starts/builds the tools, a shell script calls Mercury, and a tiny Python adapter hosts genuine Tcl.
 
-![Pongress with a real twelve-language vote](docs/pongress.jpg)
+![WonkyPong with a real twelve-language vote](docs/wonkypong.jpg)
 
 ## Play
 
 Supported and tested: **Windows x64**, Node.js 20+, Python 3 with Tcl/Tk, and the same toolchains as [WonkyCalc](https://github.com/Alfredo12111/WonkyCalc).
+
+Clone the repository first:
+
+```powershell
+git clone https://github.com/Alfredo12111/WonkyPong.git
+cd WonkyPong
+```
 
 If WonkyCalc is already set up next to this folder:
 
@@ -19,7 +26,7 @@ npm run build
 npm start
 ```
 
-Open **http://localhost:3211/**. After the first build, double-click **Pongress.cmd** to launch a hidden server and open the game. Stop a launcher-started server with:
+Open **http://localhost:3211/**. After the first build, double-click **WonkyPong.cmd** to launch a hidden server and open the game. Stop a launcher-started server with:
 
 ```powershell
 powershell -File scripts/stop.ps1
@@ -36,7 +43,7 @@ npm start
 
 Setup reuses an adjacent WonkyCalc installation, or fetches WonkyCalc's pinned toolchain installer into `.cache/toolchains`. The upstream installer verifies pinned archive checksums. First-time setup downloads several gigabytes and builds Mercury; allow substantial time. Toolchain licenses remain those of their upstream projects. Nothing is added permanently to your system PATH.
 
-To use toolchains elsewhere, set `PONGRESS_TOOLCHAINS` to the **.runtimes directory**, or write that path into ignored `toolchains.local.txt`. `PONGRESS_TCL` selects a real tclsh; otherwise the Python/Tcl adapter is used. `PONGRESS_PYTHON` overrides the Python executable. `PORT` changes the HTTP port.
+To use toolchains elsewhere, set `WONKYPONG_TOOLCHAINS` to the **.runtimes directory**, or write that path into ignored `toolchains.local.txt`. `WONKYPONG_TCL` selects a real tclsh; otherwise the Python/Tcl adapter is used. `WONKYPONG_PYTHON` overrides the Python executable. `PORT` changes the HTTP port.
 
 ## Controls
 
@@ -44,9 +51,10 @@ To use toolchains elsewhere, set `PONGRESS_TOOLCHAINS` to the **.runtimes direct
 - **Keyboard:** W/S or Up/Down; Space or P to pause.
 - **First to seven** wins. New match resets the score and cancels the previous sitting.
 - **Sound** is off initially and can be enabled.
+- **Speed:** choose **Normal (1×)** or **2×** at any time. This scales the ball, both paddles and keyboard movement. It keeps the same collision precision, preserves the selection across new matches, and does not accelerate native worker execution. At 2× the chamber has half the time to react.
 - **Senators:** hover, tap, or focus a language to read its rank, error, execution time and reasoning.
 - **Accuracy:** the chamber shows the ideal target and each proposal's distance from it in court units. The closest languages are highlighted; ties share credit. A green IDEAL marker shows the benchmark on the court.
-- **Save receipt:** download this match's real snapshots, ballots, timing, accuracy rankings, certified decisions and whether they arrived in time.
+- **Save receipt:** download this match's real snapshots, ballots, timing, accuracy rankings, certified decisions and whether they arrived in time. Receipts also record the speed when each snapshot was taken and when its decision arrived.
 - **Post-point inquiry:** explains whether an approved target missed, the paddle arrived too late, or no decision arrived for that shot. Misses with an approved motion record the actual impact height and closest senator.
 
 Switching away from the page pauses the match. The layout stacks the chamber below the court on narrow screens. Reduced-motion preferences disable the ball trail and score flash. Buttons, senator rows, instructions and match announcements have keyboard/screen-reader support; the moving Pong court is visual.
@@ -81,6 +89,8 @@ Every incoming shot has its own identity. A decision that finishes after its sho
 
 Accuracy uses the same integer snapshot given to all twelve workers. Haxe computes the ball's exact reflected trajectory from that snapshot to the chamber's contact plane at x=953, then clamps the ideal paddle center to y=60–540. **OFF (u)** is the absolute distance between a proposal and that legal ideal, in the court's 600-unit coordinate system. Rankings use unrounded errors; the interface displays one decimal place. Equal errors share a rank. During voting, the highlight means closest so far; after all twelve ballots arrive it compares the full chamber. This measures aim, independently of response time or whether the paddle can physically reach the target. The reference calculation only grades proposals; it never controls the paddle.
 
+Snapshot velocities use game-time units. The 2× option runs twice as many fixed physics steps per real second, so the trajectory and accuracy benchmark stay consistent while the deadline gets shorter. Worker timings and the 250 ms polling interval use real elapsed time.
+
 The three compiled workers are built during setup/build, **not every frame or sitting**. A representative complete sitting took about one second on the development machine; hardware and cold-start timing vary. Slow deliberation can now cost the chamber a point even when its aim is accurate.
 
 ## Development
@@ -90,7 +100,7 @@ npm run build   # Haxe client/server plus native Mercury, Eiffel and Icon
 npm test        # Haxe gameplay tests and real native integration checks
 ```
 
-Tests cover wall/paddle collisions, bounded paddle speed, continuous play during voting, manual pause, rejection of late or obsolete decisions, scoring and restart; reflected accuracy benchmarks, fractional targets and tied rankings; malformed snapshots; three-way ties and confidence tie-breaks; incomplete quorums; Eiffel rejection of illegal targets; reflected intercepts from multiple native workers; simultaneous isolated sittings; and cancellation.
+Tests cover normal/2× ball and paddle movement, speed switching and persistence, wall/paddle collisions, bounded paddle speed, continuous play during voting, manual pause, rejection of late or obsolete decisions, scoring and restart; reflected accuracy benchmarks, fractional targets and tied rankings; malformed snapshots; three-way ties and confidence tie-breaks; incomplete quorums; Eiffel rejection of illegal targets; reflected intercepts from multiple native workers; simultaneous isolated sittings; and cancellation.
 
 Native programs accept only a bounded numeric snapshot. The Haxe host launches fixed commands without a shell, limits request size, permits two concurrent sittings, caps each worker at 15 seconds, cancels owned process trees on disconnect, and removes per-request files. The server listens only on loopback and rejects foreign Host/Origin values.
 

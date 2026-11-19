@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
 $sibling = Join-Path (Split-Path $project -Parent) 'WonkyCalc/.runtimes'
-$configured = $env:PONGRESS_TOOLCHAINS
+$configured = $env:WONKYPONG_TOOLCHAINS
 if (!$configured -and (Test-Path -LiteralPath "$project/toolchains.local.txt")) { $configured = (Get-Content "$project/toolchains.local.txt" -Raw).Trim() }
 if (!$configured -and !(Test-Path -LiteralPath "$sibling/haxe")) {
     New-Item -ItemType Directory -Force -Path "$project/.cache" | Out-Null

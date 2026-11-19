@@ -9,12 +9,17 @@ class Game {
     public var bestRally:Int=0; public var seed:Int=0;
     public var active:Bool=false;
     public var flight:Int=0;
+    public var speedMultiplier(default,null):Int=1;
     public var paused:Bool=false; public var finished:Bool=false;
     public var onVote:Void->Void=function() {};
     public var onPoint:Bool->Void=function(_) {};
     public var onHit:Void->Void=function() {};
     public function new() {}
     public static inline function clamp(n:Float,low:Float,high:Float):Float return Math.max(low,Math.min(high,n));
+    public function setSpeed(multiplier:Int) {
+        if(multiplier!=1 && multiplier!=2) throw "Choose normal or 2x speed.";
+        speedMultiplier=multiplier;
+    }
     public function reset() {
         human=0; senate=0; rally=0; bestRally=0; player=300; playerTarget=300; ai=300; aiTarget=300;
         active=true; paused=false; finished=false; seed=Std.random(1000000); serve(true);
@@ -37,8 +42,12 @@ class Game {
         ai:Std.int(ai), player:Std.int(player), rally:rally, human:human, senate:senate, seed:seed
     };
     public function step(dt:Float) {
-        if(!active || paused || finished) return;
+        // Extra simulation steps preserve collision precision. Native workers keep wall-clock time.
         dt=clamp(dt,0,0.025);
+        for(_ in 0...speedMultiplier) advance(dt);
+    }
+    function advance(dt:Float) {
+        if(!active || paused || finished) return;
         player+=clamp(playerTarget-player,-700*dt,700*dt);
         ai+=clamp(aiTarget-ai,-270*dt,270*dt);
         player=clamp(player,60,540); ai=clamp(ai,60,540);

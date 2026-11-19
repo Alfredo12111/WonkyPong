@@ -1,4 +1,4 @@
-REBOL [Title: "Pongress / Rebol, the pragmatist"]
+REBOL [Title: "WonkyPong / Rebol, the pragmatist"]
 ; Parse only numeric data, never evaluate a request as a program.
 parts: split trim read/string %state.txt newline
 y: to integer! pick parts 2

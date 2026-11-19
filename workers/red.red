@@ -1,4 +1,4 @@
-Red [Title: "Pongress / Red, the risk caucus"]
+Red [Title: "WonkyPong / Red, the risk caucus"]
 parts: split trim read %state.txt newline
 x: to float! pick parts 1
 y: to float! pick parts 2

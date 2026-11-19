@@ -26,12 +26,12 @@ class Server {
         server.requestTimeout=20000;
         server.headersTimeout=10000;
         server.on("error",function(e:Dynamic) { trace(Std.string(e.message)); process.exitCode=1; });
-        server.listen(port,"127.0.0.1",function() trace("Pongress is ready: http://localhost:"+port+"/"));
+        server.listen(port,"127.0.0.1",function() trace("WonkyPong is ready: http://localhost:"+port+"/"));
     }
     public static function configure() {
         if(workers.length>0) return;
         var candidates:Array<String>=[];
-        if(process.env.PONGRESS_TOOLCHAINS!=null) candidates.push(process.env.PONGRESS_TOOLCHAINS);
+        if(process.env.WONKYPONG_TOOLCHAINS!=null) candidates.push(process.env.WONKYPONG_TOOLCHAINS);
         var local=path.join(root,"toolchains.local.txt");
         if(fs.existsSync(local)) candidates.push(StringTools.trim(fs.readFileSync(local,"utf8")));
         candidates.push(path.join(root,"../WonkyCalc/.runtimes"));
@@ -52,8 +52,8 @@ class Server {
         for(s in specs) workers.push({id:s.id,exe:path.join(runtimeRoot,s.exe),args:s.args});
         for(id in ["eiffel","mercury","icon"])
             workers.push({id:id,exe:path.join(root,".build/native/"+id+".exe"),args:[]});
-        var tcl:String=process.env.PONGRESS_TCL;
-        var python:String=process.env.PONGRESS_PYTHON;
+        var tcl:String=process.env.WONKYPONG_TCL;
+        var python:String=process.env.WONKYPONG_PYTHON;
         if(python==null) python="python";
         workers.push(tcl!=null ? {id:"tcl",exe:tcl,args:[path.join(source,"tcl.tcl")]} :
             {id:"tcl",exe:python,args:[path.join(root,"scripts/tcl-host.py"),path.join(source,"tcl.tcl")]});
@@ -64,7 +64,7 @@ class Server {
         return [for(id in Protocol.ids) {
             var w=worker(id);
             var available:Bool=fs.existsSync(w.exe);
-            if(id=="tcl" && !available && process.env.PONGRESS_TCL==null) {
+            if(id=="tcl" && !available && process.env.WONKYPONG_TCL==null) {
                 var p=cp.spawnSync(w.exe,["-c","import tkinter; tkinter.Tcl().eval('info patchlevel')"],{windowsHide:true,timeout:4000});
                 available=p.status==0;
             }
@@ -86,8 +86,8 @@ class Server {
         if(hosts.indexOf(req.headers.host)<0) { json(res,403,{error:"Local requests only."}); return; }
         var origin:String=req.headers.origin;
         if(origin!=null && origin!="http://localhost:"+port && origin!="http://127.0.0.1:"+port) { json(res,403,{error:"Local requests only."}); return; }
-        if(req.method=="GET" && req.url=="/api/health") { json(res,200,{project:"Pongress",workers:health()}); return; }
-        if(req.method=="GET" && (req.url=="/" || req.url=="/pongress.js" || req.url=="/favicon.svg")) {
+        if(req.method=="GET" && req.url=="/api/health") { json(res,200,{project:"WonkyPong",workers:health()}); return; }
+        if(req.method=="GET" && (req.url=="/" || req.url=="/wonkypong.js" || req.url=="/favicon.svg")) {
             var name=req.url=="/"?"index.html":req.url.substr(1);
             try {
                 var bytes=fs.readFileSync(path.join(root,"public",name));
