@@ -1,0 +1,6 @@
+-cp src
+-cp tests
+-main Test
+-js .build/test.cjs
+-D js-es=6
+-D nodejs

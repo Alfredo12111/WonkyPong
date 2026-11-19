@@ -1,0 +1,34 @@
+# Icon votes defensively and generates the actual parliamentary record.
+procedure main()
+    local input, output, s, line, target, raw, t, bill, winner, up, hold, down, count
+    input := open("state.txt", "r") | stop("Missing state")
+    s := []
+    every line := !input do put(s, integer(line))
+    close(input)
+    t := 0.0
+    if s[3] > 0 then t := (953.0-s[1])/s[3]
+    raw := s[2]-7+s[4]*t
+    while raw < 0 do raw +:= 1172
+    while raw >= 1172 do raw -:= 1172
+    if raw > 586 then raw := 1172-raw
+    target := integer((raw+7)*0.65+300*0.35)
+    if target < 60 then target := 60
+    if target > 540 then target := 540
+    output := open("icon.vote", "w")
+    write(output, target)
+    write(output, 68)
+    write(output, "There is always another outcome. Keep an escape route to center.")
+    close(output)
+    if bill := open("bill.txt", "r") then {
+        target := read(bill); winner := read(bill)
+        up := integer(read(bill)); hold := integer(read(bill)); down := integer(read(bill))
+        close(bill)
+        count := case winner of { "UP": up; "DOWN": down; default: hold }
+        output := open("record.txt", "w")
+        write(output, "Motion to move ", winner, " carries ", count, " to ", 12-count, ".")
+        write(output, "Twelve languages consulted. One rectangle relocated to y=", target, ".")
+        if count < 12 then write(output, 12-count, " senators request that their objections be entered into the record.")
+        else write(output, "Unanimous consent. The clerk suspects this will not happen again.")
+        close(output)
+    }
+end

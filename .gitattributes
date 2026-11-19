@@ -1,0 +1,16 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.hx text eol=lf linguist-language=Haxe
+*.raku text eol=lf linguist-language=Raku
+*.reb text eol=lf linguist-language=Rebol
+*.red text eol=lf linguist-language=Red
+*.pl text eol=lf linguist-language=Prolog
+*.tcl text eol=lf linguist-language=Tcl
+*.ijs text eol=lf linguist-language=J
+*.bqn text eol=lf linguist-language=BQN
+*.factor text eol=lf linguist-language=Factor
+*.rexx text eol=lf linguist-language=REXX
+*.m text eol=lf linguist-language=Mercury
+*.e text eol=lf linguist-language=Eiffel
+*.icn text eol=lf
+public/pongress.js linguist-generated=true

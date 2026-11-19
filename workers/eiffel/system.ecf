@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<system xmlns="http://www.eiffel.com/developers/xml/configuration-1-23-0" name="senator" uuid="bc3abf5e-5c82-41e7-82ac-9a2aab469a6d">
+  <target name="senator">
+    <root class="SENATOR" feature="make"/>
+    <option warning="true" void_safety="none"><assertions precondition="true" postcondition="true" check="true" invariant="true"/></option>
+    <setting name="console_application" value="true"/>
+    <library name="base" location="$GOBO/library/free_elks/library.ecf"/>
+    <cluster name="app" location="."/>
+  </target>
+</system>
